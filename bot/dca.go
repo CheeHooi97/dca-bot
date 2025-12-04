@@ -111,32 +111,48 @@ func (b *DCABot) totalHoldings() float64 {
 }
 
 func StartDCAWebSocket(bot *DCABot) {
-	wsURL := "wss://stream.binance.com:9443/ws/" + strings.ToLower(bot.Symbol) + "@trade"
+    wsURL := fmt.Sprintf(
+        "wss://stream.binance.com:9443/ws/%s@trade",
+        strings.ToLower(bot.Symbol),
+    )
 
-	c, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		log.Fatal("WebSocket error:", err)
-	}
-	defer c.Close()
+    fmt.Println("Connecting to:", wsURL)
 
-	for {
-		_, msg, err := c.ReadMessage()
-		if err != nil {
-			fmt.Println("WS closed:", err)
-			return
-		}
+    dialer := websocket.Dialer{}
 
-		var data struct {
-			Price string `json:"p"`
-		}
+    header := http.Header{}
+    header.Add("Origin", "https://binance.com")
 
-		if jsonErr := json.Unmarshal(msg, &data); jsonErr != nil {
-			continue
-		}
+    c, resp, err := dialer.Dial(wsURL, header)
+    if err != nil {
+        if resp != nil {
+            body, _ := io.ReadAll(resp.Body)
+            fmt.Println("Handshake failed:", resp.Status, string(body))
+        }
+        log.Fatal("WebSocket error:", err)
+    }
+    defer c.Close()
 
-		price, _ := strconv.ParseFloat(data.Price, 64)
-		bot.OnPrice(price)
-	}
+    fmt.Println("Connected OK!")
+
+    for {
+        _, msg, err := c.ReadMessage()
+        if err != nil {
+            fmt.Println("WS closed:", err)
+            return
+        }
+
+        var data struct {
+            Price string `json:"p"`
+        }
+
+        if err := json.Unmarshal(msg, &data); err != nil {
+            continue
+        }
+
+        price, _ := strconv.ParseFloat(data.Price, 64)
+        bot.OnPrice(price)
+    }
 }
 
 func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent float64) {
