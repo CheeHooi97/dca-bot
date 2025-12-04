@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/gorilla/websocket"
+	"net/http"
+    "io" 
 )
 
 type DCABot struct {
