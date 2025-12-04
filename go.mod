@@ -1,4 +1,4 @@
-module bot-1
+module dca-bot
 
 go 1.22.12
 

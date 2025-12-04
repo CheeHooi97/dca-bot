@@ -2,7 +2,7 @@ package main
 
 import (
 	"dca-bot/config"
-	"dca-bot/service"   // <-- your DCAService
+	"dca-bot/service"
 	"bufio"
 	"fmt"
 	"os"

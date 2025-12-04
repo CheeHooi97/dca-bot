@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"bot-1/service"
+	"dca-bot/service"
 	"bufio"
 	"fmt"
 	"os"

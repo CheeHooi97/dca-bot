@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"bot-1/constant"
-	"bot-1/service"
+	"dca-bot/constant"
+	"dca-bot/service"
 	"bufio"
 	"fmt"
 	"os"

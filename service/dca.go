@@ -1,8 +1,8 @@
 package service
 
 import (
-	"bot-1/bot"
-	"bot-1/repository"
+	"dca-bot/bot"
+	"dca-bot/repository"
 	"fmt"
 )
 

@@ -1,8 +1,8 @@
 package bot
 
 import (
-	"bot-1/config"
-	"bot-1/constant"
+	"dca-bot/config"
+	"dca-bot/constant"
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"

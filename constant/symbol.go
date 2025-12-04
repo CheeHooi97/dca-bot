@@ -1,6 +1,6 @@
 package constant
 
-import "bot-1/config"
+import "dca-bot/config"
 
 func GetTokenMap() map[string]any {
 	return map[string]any{
