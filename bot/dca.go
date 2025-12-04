@@ -1,7 +1,7 @@
 package bot
 
 import (
-	"bot-1/config"
+	"dca-bot/config"
 	"encoding/json"
 	"fmt"
 	"log"
