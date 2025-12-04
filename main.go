@@ -1,9 +1,8 @@
 package main
 
 import (
-	"bot-1/bot"
-	"bot-1/config"
-	"bot-1/constant"
+	"dca-bot/config"
+	"dca-bot/service"   // <-- your DCAService
 	"bufio"
 	"fmt"
 	"os"
@@ -12,35 +11,49 @@ import (
 )
 
 func main() {
-	// load config
+	// Load config
 	config.LoadConfig()
 
 	reader := bufio.NewReader(os.Stdin)
 
-	fmt.Printf("Enter trading pair (e.g. btcusdt): ")
+	// --- Input: Symbol ---
+	fmt.Print("Enter trading pair (e.g. btcusdt): ")
 	symbolInput, _ := reader.ReadString('\n')
 	symbol := strings.TrimSpace(symbolInput)
 
-	fmt.Printf("Enter interval for %s (e.g. 1m, 5m, 15m, 1h): ", symbol)
-	intervalInput, _ := reader.ReadString('\n')
-	interval := strings.TrimSpace(intervalInput)
+	// --- Input: Total USDT for DCA ---
+	fmt.Print("Enter total USDT budget for DCA: ")
+	usdtInput, _ := reader.ReadString('\n')
+	usdtStr := strings.TrimSpace(usdtInput)
 
-	fmt.Print("Enter stop loss percentage (e.g. 1.5): ")
-	slInput, _ := reader.ReadString('\n')
-	slStr := strings.TrimSpace(slInput)
-	stopLossPercent, err := strconv.ParseFloat(slStr, 64)
+	totalUSDT, err := strconv.ParseFloat(usdtStr, 64)
 	if err != nil {
-		fmt.Println("Invalid stop loss input. Using default 1.5%.")
-		stopLossPercent = 1.5
+		fmt.Println("Invalid USDT amount")
+		return
 	}
 
-	tokenMap := constant.GetTokenMap()
+	// --- Input: Drop percent trigger ---
+	fmt.Print("Enter drop percentage trigger (e.g. 1.5): ")
+	dropInput, _ := reader.ReadString('\n')
+	dropStr := strings.TrimSpace(dropInput)
 
-	token := tokenMap[symbol].(map[string]string)[interval]
+	dropPercent, err := strconv.ParseFloat(dropStr, 64)
+	if err != nil {
+		fmt.Println("Invalid drop percent")
+		return
+	}
 
-	// threadMap := constant.GetThreadIdMap()
+	// Initialize service
+	dcaService := service.NewDCAService()
 
-	// threadId := threadMap[symbol].(map[string]int64)[interval]
+	// Start DCA bot
+	err = dcaService.Start(symbol, totalUSDT, dropPercent)
+	if err != nil {
+		fmt.Println("Error starting DCA:", err)
+		return
+	}
 
-	bot.Bot(symbol, interval, token, stopLossPercent)
+	// Keep the program alive so goroutine runs
+	fmt.Println("DCA bot started... (CTRL+C to exit)")
+	select {}
 }
