@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+    "io"
 	"strconv"
 	"strings"
 
@@ -111,32 +113,60 @@ func (b *DCABot) totalHoldings() float64 {
 }
 
 func StartDCAWebSocket(bot *DCABot) {
-	wsURL := "wss://stream.binance.com:9443/ws/" + strings.ToLower(bot.Symbol) + "@4h"
 
-	c, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		log.Fatal("WebSocket error:", err)
-	}
-	defer c.Close()
+    // Malaysia-safe endpoint (AWS mirror)
+    wsURL := "wss://data-stream.binance.com/ws/" +
+        strings.ToLower(bot.Symbol) + "@trade"
 
-	for {
-		_, msg, err := c.ReadMessage()
-		if err != nil {
-			fmt.Println("WS closed:", err)
-			return
-		}
+    fmt.Println("Connecting to:", wsURL)
 
-		var data struct {
-			Price string `json:"p"`
-		}
+    // Add safe headers (some ISPs require Origin / UA)
+    header := http.Header{}
+    header.Add("Origin", "https://binance.com")
+    header.Add("User-Agent", "Mozilla/5.0")
 
-		if jsonErr := json.Unmarshal(msg, &data); jsonErr != nil {
-			continue
-		}
+    c, resp, err := websocket.DefaultDialer.Dial(wsURL, header)
+    if err != nil {
+        fmt.Println("❌ WebSocket handshake failed")
 
-		price, _ := strconv.ParseFloat(data.Price, 64)
-		bot.OnPrice(price)
-	}
+        if resp != nil {
+            fmt.Println("Status:", resp.Status)
+            body := "<no body>"
+            if resp.Body != nil {
+                b, _ := io.ReadAll(resp.Body)
+                body = string(b)
+            }
+            fmt.Println("Response body:", body)
+        }
+
+        log.Fatal("WebSocket error:", err)
+    }
+    defer c.Close()
+
+    fmt.Println("✅ WebSocket connected successfully!")
+
+    for {
+        _, msg, err := c.ReadMessage()
+        if err != nil {
+            fmt.Println("WS closed:", err)
+            return
+        }
+
+        var data struct {
+            Price string `json:"p"`
+        }
+
+        if jsonErr := json.Unmarshal(msg, &data); jsonErr != nil {
+            continue
+        }
+
+        price, err := strconv.ParseFloat(data.Price, 64)
+        if err != nil {
+            continue
+        }
+
+        bot.OnPrice(price)
+    }
 }
 
 func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent float64) {
