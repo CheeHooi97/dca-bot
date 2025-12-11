@@ -1,9 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"dca-bot/config"
 	"dca-bot/service"
-	"bufio"
 	"fmt"
 	"os"
 	"strconv"
@@ -43,11 +43,17 @@ func main() {
 		return
 	}
 
+	fmt.Print("Fallback Buy Again: ")
+	fallbackBuyHoursInput, _ := reader.ReadString('\n')
+	fallbackBuyHoursStr := strings.TrimSpace(fallbackBuyHoursInput)
+
+	fallbackBuyHours, _ := strconv.ParseInt(fallbackBuyHoursStr, 10, 64)
+
 	// Initialize service
 	dcaService := service.NewDCAService()
 
 	// Start DCA bot
-	err = dcaService.Start(symbol, totalUSDT, dropPercent)
+	err = dcaService.Start(symbol, totalUSDT, dropPercent, int(fallbackBuyHours))
 	if err != nil {
 		fmt.Println("Error starting DCA:", err)
 		return
