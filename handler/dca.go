@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"dca-bot/service"
 	"bufio"
+	"dca-bot/service"
 	"fmt"
 	"os"
 	"strconv"
@@ -42,5 +42,11 @@ func (h *DCAHandler) StartDCA() error {
 		return fmt.Errorf("invalid drop percentage")
 	}
 
-	return h.service.Start(symbol, totalUsdt, dropPercent)
+	fmt.Print("Fallback Buy Again: ")
+	fallbackBuyHoursInput, _ := reader.ReadString('\n')
+	fallbackBuyHoursStr := strings.TrimSpace(fallbackBuyHoursInput)
+
+	fallbackBuyHours, _ := strconv.ParseInt(fallbackBuyHoursStr, 10, 64)
+
+	return h.service.Start(symbol, totalUsdt, dropPercent, int(fallbackBuyHours))
 }
