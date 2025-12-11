@@ -15,15 +15,16 @@ import (
 )
 
 type DCABot struct {
-	Symbol        string
-	DropPercent   float64
-	TotalUSDT     float64
-	OneBuyUSDT    float64
-	LastBuyPrice  float64
-	Started       bool
-	Records       []DCARecord
-	LastBuyTime   time.Time
-	FallbackHours time.Duration
+	Symbol         string
+	DropPercent    float64
+	TotalUSDT      float64
+	OneBuyUSDT     float64
+	LastBuyPrice   float64
+	Started        bool
+	Records        []DCARecord
+	LastBuyTime    time.Time
+	FallbackHours  time.Duration
+	LatestDayPrice float64
 }
 
 type DCARecord struct {
@@ -47,6 +48,8 @@ func NewDCABot(symbol string, totalUSDT float64, dropPercent float64, fallbackBu
 }
 
 func (b *DCABot) OnPrice(price float64, token string) {
+	b.LatestDayPrice = price
+
 	// FIRST BUY
 	if !b.Started {
 		fmt.Printf("\nDCA START — FIRST BUY at %.4f\n", price)
@@ -97,13 +100,15 @@ func (b *DCABot) executeBuy(price float64, token string) {
 	}
 
 	b.Records = append(b.Records, record)
+	avgPrice := b.avgBuyPrice()
 
 	message := fmt.Sprintf(
-		"📉 DCA BUY #%d\nSymbol: %s\nPrice: %.4f\nBought: %.6f %s\nUSDT Spent: %.2f\nRemaining: %.2f\nTotal Holdings: %.6f %s",
+		"📉 DCA BUY #%d\nSymbol: %s\nPrice: %.4f\nBought: %.6f %s\nUSDT Spent: %.2f\nRemaining: %.2f\nTotal Holdings: %.6f %s\n📊 Avg Buy Price: %.4f",
 		record.BuyNumber, b.Symbol,
 		record.Price, record.AmountBought, b.Symbol,
 		record.USDTSpent, record.RemainingUSDT,
 		record.TotalHoldings, b.Symbol,
+		avgPrice,
 	)
 
 	// Send Telegram message
@@ -116,17 +121,13 @@ Bought: %.6f %s
 USDT Spent: %.2f
 Remaining USDT: %.2f
 Total Holdings: %.6f %s
+Avg Buy Price: %.4f
 ========================
-`, record.BuyNumber, record.Price, record.AmountBought, b.Symbol,
-		record.USDTSpent, record.RemainingUSDT, record.TotalHoldings, b.Symbol)
-}
+`,
+		record.BuyNumber, record.Price, record.AmountBought, b.Symbol,
+		record.USDTSpent, record.RemainingUSDT, record.TotalHoldings, b.Symbol,
+		avgPrice)
 
-func (b *DCABot) totalHoldings() float64 {
-	sum := 0.0
-	for _, r := range b.Records {
-		sum += r.AmountBought
-	}
-	return sum
 }
 
 func StartDCAWebSocket(bot *DCABot) {
@@ -204,4 +205,73 @@ func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent float64, fallba
 	bot.OneBuyUSDT = oneBuyUSDT // ensure 1% of total
 
 	StartDCAWebSocket(bot)
+}
+
+func (b *DCABot) totalCost() float64 {
+	var total float64
+	for _, r := range b.Records {
+		total += r.USDTSpent
+	}
+	return total
+}
+
+func (b *DCABot) totalHoldings() float64 {
+	sum := 0.0
+	for _, r := range b.Records {
+		sum += r.AmountBought
+	}
+	return sum
+}
+
+func (b *DCABot) avgBuyPrice() float64 {
+	totalCost := b.totalCost()
+	totalHoldings := b.totalHoldings()
+
+	if totalHoldings == 0 {
+		return 0
+	}
+
+	return totalCost / totalHoldings
+}
+
+func (b *DCABot) UnrealizedPNL(currentPrice float64) (pnlUSDT float64, pnlPercent float64) {
+	avg := b.avgBuyPrice()
+	holdings := b.totalHoldings()
+
+	if holdings == 0 {
+		return 0, 0
+	}
+
+	pnlUSDT = (currentPrice - avg) * holdings
+	pnlPercent = ((currentPrice / avg) - 1) * 100
+	return
+}
+
+func (b *DCABot) StartDailyPNLTracker(token string) {
+	ticker := time.NewTicker(24 * time.Hour)
+
+	for {
+		<-ticker.C
+
+		// Skip if no holdings
+		if len(b.Records) == 0 {
+			continue
+		}
+
+		// Use latest known price (you must store it — see below)
+		currentPrice := b.LatestDayPrice
+		pnlUSDT, pnlPercent := b.UnrealizedPNL(currentPrice)
+
+		message := fmt.Sprintf(
+			"📊 24h PNL Report (%s)\nCurrent Price: %.4f\nAvg Entry: %.4f\nTotal Holdings: %.6f\nUnrealized PNL: %.2f USDT (%.2f%%)",
+			b.Symbol,
+			currentPrice,
+			b.avgBuyPrice(),
+			b.totalHoldings(),
+			pnlUSDT,
+			pnlPercent,
+		)
+
+		sendTelegramMessage(token, message)
+	}
 }
