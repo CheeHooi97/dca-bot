@@ -9,18 +9,21 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
 type DCABot struct {
-	Symbol       string
-	DropPercent  float64
-	TotalUSDT    float64
-	OneBuyUSDT   float64
-	LastBuyPrice float64
-	Started      bool
-	Records      []DCARecord
+	Symbol        string
+	DropPercent   float64
+	TotalUSDT     float64
+	OneBuyUSDT    float64
+	LastBuyPrice  float64
+	Started       bool
+	Records       []DCARecord
+	LastBuyTime   time.Time
+	FallbackHours time.Duration
 }
 
 type DCARecord struct {
@@ -32,31 +35,45 @@ type DCARecord struct {
 	TotalHoldings float64
 }
 
-func NewDCABot(symbol string, totalUSDT float64, dropPercent float64) *DCABot {
+func NewDCABot(symbol string, totalUSDT float64, dropPercent float64, fallbackBuyHours int) *DCABot {
 	return &DCABot{
-		Symbol:      symbol,
-		DropPercent: dropPercent,
-		TotalUSDT:   totalUSDT,
-		OneBuyUSDT:  totalUSDT * 0.01,
-		Records:     []DCARecord{},
+		Symbol:        symbol,
+		DropPercent:   dropPercent,
+		TotalUSDT:     totalUSDT,
+		OneBuyUSDT:    totalUSDT * 0.01,
+		Records:       []DCARecord{},
+		FallbackHours: time.Duration(fallbackBuyHours) * time.Hour,
 	}
 }
 
 func (b *DCABot) OnPrice(price float64, token string) {
+	// FIRST BUY
 	if !b.Started {
 		fmt.Printf("\nDCA START — FIRST BUY at %.4f\n", price)
 		b.executeBuy(price, token)
 		b.LastBuyPrice = price
+		b.LastBuyTime = time.Now()
 		b.Started = true
 		return
 	}
 
+	// CHECK PRICE DROP
 	drop := ((b.LastBuyPrice - price) / b.LastBuyPrice) * 100
-
 	if drop >= b.DropPercent {
 		fmt.Printf("PRICE DROP %.2f%% → BUY triggered\n", drop)
 		b.executeBuy(price, token)
 		b.LastBuyPrice = price
+		b.LastBuyTime = time.Now()
+		return
+	}
+
+	// CHECK 12-HOUR FALLBACK
+	if time.Since(b.LastBuyTime) >= b.FallbackHours {
+		fmt.Printf("NO DROP for %v → 12h FALLBACK BUY at %.4f\n", b.FallbackHours, price)
+		b.executeBuy(price, token)
+		b.LastBuyPrice = price
+		b.LastBuyTime = time.Now()
+		return
 	}
 }
 
@@ -182,8 +199,8 @@ func StartDCAWebSocket(bot *DCABot) {
 	}
 }
 
-func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent float64) {
-	bot := NewDCABot(symbol, totalUSDT, dropPercent)
+func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent float64, fallbackBuyHours int) {
+	bot := NewDCABot(symbol, totalUSDT, dropPercent, fallbackBuyHours)
 	bot.OneBuyUSDT = oneBuyUSDT // ensure 1% of total
 
 	StartDCAWebSocket(bot)
