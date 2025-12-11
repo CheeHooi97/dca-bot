@@ -16,7 +16,7 @@ func NewDCAService() *DCAService {
 	}
 }
 
-func (s *DCAService) Start(symbol string, totalUSDT, dropPercent float64) error {
+func (s *DCAService) Start(symbol string, totalUSDT, dropPercent float64, fallbackBuyHours int) error {
 	dcaAmount := totalUSDT * 0.01 // buy 1% per entry
 
 	fmt.Println("===== DCA MODE =====")
@@ -28,7 +28,7 @@ func (s *DCAService) Start(symbol string, totalUSDT, dropPercent float64) error 
 	s.repo.Save(symbol, totalUSDT, dropPercent) // optional persistence
 
 	// run DCA bot (websocket)
-	go bot.RunDCABot(symbol, totalUSDT, dcaAmount, dropPercent)
+	go bot.RunDCABot(symbol, totalUSDT, dcaAmount, dropPercent, fallbackBuyHours)
 
 	return nil
 }
