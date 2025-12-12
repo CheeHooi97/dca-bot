@@ -61,7 +61,7 @@ func (b *DCABot) OnPrice(price float64, token string) {
 		return
 	}
 
-	// CHECK PRICE DROP
+	// PRICE DROP BUY
 	drop := ((b.LastBuyPrice - price) / b.LastBuyPrice) * 100
 	if drop >= b.DropPercent {
 		fmt.Printf("PRICE DROP %.2f%% → BUY triggered\n", drop)
@@ -71,12 +71,14 @@ func (b *DCABot) OnPrice(price float64, token string) {
 		return
 	}
 
-	// Calculate price increase percentage
+	// PRICE RISE %
 	rise := ((price - b.LastBuyPrice) / b.LastBuyPrice) * 100
 
-	// CHECK 12-HOUR FALLBACK
+	// FALLBACK BUY (after X hours + rise >= DropPercent)
 	if time.Since(b.LastBuyTime) >= b.FallbackHours && rise >= b.DropPercent {
-		fmt.Printf("NO DROP for %v → 12h FALLBACK BUY at %.4f\n", b.FallbackHours, price)
+		fmt.Printf("NO DROP for %v → Rise %.2f%% ≥ %.2f%% → FALLBACK BUY at %.4f\n",
+			b.FallbackHours, rise, b.DropPercent, price)
+
 		b.executeBuy(price, token)
 		b.LastBuyPrice = price
 		b.LastBuyTime = time.Now()
