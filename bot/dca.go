@@ -71,8 +71,11 @@ func (b *DCABot) OnPrice(price float64, token string) {
 		return
 	}
 
+	// Calculate price increase percentage
+	rise := ((price - b.LastBuyPrice) / b.LastBuyPrice) * 100
+
 	// CHECK 12-HOUR FALLBACK
-	if time.Since(b.LastBuyTime) >= b.FallbackHours {
+	if time.Since(b.LastBuyTime) >= b.FallbackHours && rise >= b.DropPercent {
 		fmt.Printf("NO DROP for %v → 12h FALLBACK BUY at %.4f\n", b.FallbackHours, price)
 		b.executeBuy(price, token)
 		b.LastBuyPrice = price
