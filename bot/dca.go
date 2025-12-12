@@ -164,6 +164,39 @@ func StartDCAWebSocket(bot *DCABot, fallbackBuyHours int) {
 
 	fmt.Println("✅ WebSocket connected successfully!")
 
+	tokenMap := constant.GetTokenMap()
+	tokenConfig, ok := tokenMap[bot.Symbol].(map[float64]string)
+	if !ok {
+		log.Println("symbol not found")
+		return
+	}
+
+	token, ok := tokenConfig[bot.DropPercent]
+	if !ok {
+		log.Println("drop percent not found")
+		return
+	}
+
+	switch bot.Symbol {
+	case "btcusdt":
+		switch fallbackBuyHours {
+		case 1:
+			token = config.BTC1_1h
+		case 4:
+			token = config.BTC1_4h
+		}
+	case "ethusdt":
+		switch fallbackBuyHours {
+		case 1:
+			token = config.ETH1_1h
+		case 4:
+			token = config.ETH1_4h
+		}
+	default:
+	}
+
+	go bot.StartDailyPNLTracker(token)
+
 	for {
 		_, msg, err := c.ReadMessage()
 		if err != nil {
@@ -184,37 +217,6 @@ func StartDCAWebSocket(bot *DCABot, fallbackBuyHours int) {
 			continue
 		}
 
-		tokenMap := constant.GetTokenMap()
-		tokenConfig, ok := tokenMap[bot.Symbol].(map[float64]string)
-		if !ok {
-			log.Println("symbol not found")
-			return
-		}
-
-		token, ok := tokenConfig[bot.DropPercent]
-		if !ok {
-			log.Println("drop percent not found")
-			return
-		}
-
-		switch bot.Symbol {
-		case "btcusdt":
-			switch fallbackBuyHours {
-			case 1:
-				token = config.BTC1_1h
-			case 4:
-				token = config.BTC1_4h
-			}
-		case "ethusdt":
-			switch fallbackBuyHours {
-			case 1:
-				token = config.ETH1_1h
-			case 4:
-				token = config.ETH1_4h
-			}
-		default:
-		}
-
 		bot.OnPrice(price, token)
 	}
 }
@@ -224,6 +226,7 @@ func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent float64, fallba
 	bot.OneBuyUSDT = oneBuyUSDT // ensure 1% of total
 
 	StartDCAWebSocket(bot, fallbackBuyHours)
+
 }
 
 func (b *DCABot) totalCost() float64 {
