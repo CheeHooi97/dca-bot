@@ -17,6 +17,10 @@ var (
 	ETH1             string
 	ETH1x5           string
 	TelegramChatId   string
+	BTC1_1h          string
+	BTC1_4h          string
+	ETH1_1h          string
+	ETH1_4h          string
 )
 
 // LoadConfig
@@ -32,6 +36,10 @@ func LoadConfig() {
 	ETH1 = GetEnv("ETH1")
 	ETH1x5 = GetEnv("ETH1x5")
 	TelegramChatId = GetEnv("TELEGRAM_CHAT_ID")
+	BTC1_1h = GetEnv("BTC1_1h")
+	BTC1_4h = GetEnv("BTC1_4h")
+	ETH1_1h = GetEnv("ETH1_1h")
+	ETH1_4h = GetEnv("ETH1_4h")
 }
 
 func GetEnv(key string) string {
