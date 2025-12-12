@@ -270,23 +270,31 @@ func (b *DCABot) UnrealizedPNL(currentPrice float64) (pnlUSDT float64, pnlPercen
 }
 
 func (b *DCABot) StartDailyPNLTracker(token string) {
-	ticker := time.NewTicker(24 * time.Hour)
-
 	for {
-		<-ticker.C
+		// Calculate duration until next midnight
+		now := time.Now()
+		nextMidnight := time.Date(
+			now.Year(), now.Month(), now.Day()+1,
+			0, 0, 0, 0,
+			now.Location(),
+		)
+		timeUntilMidnight := nextMidnight.Sub(now)
+
+		// Sleep until 12:00 AM
+		time.Sleep(timeUntilMidnight)
 
 		// Skip if no holdings
 		if len(b.Records) == 0 {
 			continue
 		}
 
-		// Use latest known price (you must store it — see below)
 		currentPrice := b.LatestDayPrice
 		pnlUSDT, pnlPercent := b.UnrealizedPNL(currentPrice)
 
 		message := fmt.Sprintf(
-			"📊 24h PNL Report (%s)\nCurrent Price: %.4f\nAvg Entry: %.4f\nTotal Holdings: %.6f\nUnrealized PNL: %.2f USDT (%.2f%%)",
+			"📊 Daily PNL Report (%s)\nTime: %s\nCurrent Price: %.4f\nAvg Entry: %.4f\nTotal Holdings: %.6f\nUnrealized PNL: %.2f USDT (%.2f%%)",
 			b.Symbol,
+			time.Now().Format("2006-01-02 15:04:05"),
 			currentPrice,
 			b.avgBuyPrice(),
 			b.totalHoldings(),
@@ -295,5 +303,7 @@ func (b *DCABot) StartDailyPNLTracker(token string) {
 		)
 
 		sendTelegramMessage(token, message)
+
+		// Loop will repeat → next iteration calculates next midnight
 	}
 }
