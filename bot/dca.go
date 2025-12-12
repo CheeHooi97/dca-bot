@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"dca-bot/config"
 	"dca-bot/constant"
 	"encoding/json"
 	"fmt"
@@ -130,7 +131,7 @@ Avg Buy Price: %.4f
 
 }
 
-func StartDCAWebSocket(bot *DCABot) {
+func StartDCAWebSocket(bot *DCABot, fallbackBuyHours int) {
 
 	// Malaysia-safe endpoint (AWS mirror)
 	wsURL := "wss://data-stream.binance.com/ws/" +
@@ -196,6 +197,24 @@ func StartDCAWebSocket(bot *DCABot) {
 			return
 		}
 
+		switch bot.Symbol {
+		case "btcusdt":
+			switch fallbackBuyHours {
+			case 1:
+				token = config.BTC1_1h
+			case 4:
+				token = config.BTC1_4h
+			}
+		case "ethusdt":
+			switch fallbackBuyHours {
+			case 1:
+				token = config.ETH1_1h
+			case 4:
+				token = config.ETH1_4h
+			}
+		default:
+		}
+
 		bot.OnPrice(price, token)
 	}
 }
@@ -204,7 +223,7 @@ func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent float64, fallba
 	bot := NewDCABot(symbol, totalUSDT, dropPercent, fallbackBuyHours)
 	bot.OneBuyUSDT = oneBuyUSDT // ensure 1% of total
 
-	StartDCAWebSocket(bot)
+	StartDCAWebSocket(bot, fallbackBuyHours)
 }
 
 func (b *DCABot) totalCost() float64 {
