@@ -48,5 +48,13 @@ func (h *DCAHandler) StartDCA() error {
 
 	fallbackBuyHours, _ := strconv.ParseInt(fallbackBuyHoursStr, 10, 64)
 
-	return h.service.Start(symbol, totalUsdt, dropPercent, int(fallbackBuyHours))
+	fmt.Printf("Enter sell percentage(e.g. 2): ")
+	sellStr, _ := reader.ReadString('\n')
+	sellStr = strings.TrimSpace(sellStr)
+	sellPercent, err := strconv.ParseFloat(sellStr, 64)
+	if err != nil {
+		return fmt.Errorf("invalid drop percentage")
+	}
+
+	return h.service.Start(symbol, totalUsdt, dropPercent, sellPercent, int(fallbackBuyHours))
 }
