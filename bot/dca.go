@@ -18,6 +18,7 @@ import (
 type DCABot struct {
 	Symbol         string
 	DropPercent    float64
+	SellPercent    float64
 	TotalUSDT      float64
 	OneBuyUSDT     float64
 	LastBuyPrice   float64
@@ -37,10 +38,11 @@ type DCARecord struct {
 	TotalHoldings float64
 }
 
-func NewDCABot(symbol string, totalUSDT float64, dropPercent float64, fallbackBuyHours int) *DCABot {
+func NewDCABot(symbol string, totalUSDT, dropPercent, sellPercent float64, fallbackBuyHours int) *DCABot {
 	return &DCABot{
 		Symbol:        symbol,
 		DropPercent:   dropPercent,
+		SellPercent:   sellPercent,
 		TotalUSDT:     totalUSDT,
 		OneBuyUSDT:    totalUSDT * 0.01,
 		Records:       []DCARecord{},
@@ -83,6 +85,17 @@ func (b *DCABot) OnPrice(price float64, token string) {
 		b.LastBuyPrice = price
 		b.LastBuyTime = time.Now()
 		return
+	}
+
+	// SELL CONDITION
+	avgPrice := b.avgBuyPrice()
+	if avgPrice > 0 {
+		targetPrice := avgPrice * (1 + b.SellPercent/100)
+
+		if price >= targetPrice {
+			fmt.Printf("SELL triggered → Price %.4f ≥ Target %.4f\n", price, targetPrice)
+			b.executeSell(price, token)
+		}
 	}
 }
 
@@ -134,6 +147,74 @@ Avg Buy Price: %.4f
 		record.USDTSpent, record.RemainingUSDT, record.TotalHoldings, b.Symbol,
 		avgPrice)
 
+}
+
+func (b *DCABot) executeSell(price float64, token string) {
+	if len(b.Records) == 0 {
+		return
+	}
+
+	totalHoldings := b.totalHoldings()
+	recordCount := float64(len(b.Records))
+
+	// Sell half of ONE record-sized chunk
+	oneChunk := totalHoldings / recordCount
+	sellQty := oneChunk * 0.5
+	sellUSDT := sellQty * price
+
+	remainingToSell := sellQty
+
+	// FIFO reduce from records
+	for i := 0; i < len(b.Records) && remainingToSell > 0; i++ {
+		r := &b.Records[i]
+
+		if r.AmountBought <= remainingToSell {
+			remainingToSell -= r.AmountBought
+			r.AmountBought = 0
+		} else {
+			r.AmountBought -= remainingToSell
+			remainingToSell = 0
+		}
+	}
+
+	// Clean up empty records
+	newRecords := []DCARecord{}
+	for _, r := range b.Records {
+		if r.AmountBought > 0 {
+			newRecords = append(newRecords, r)
+		}
+	}
+	b.Records = newRecords
+
+	b.TotalUSDT += sellUSDT
+
+	message := fmt.Sprintf(
+		"🔴 MOCK SELL (½ of 1 record)\nSymbol: %s\nPrice: %.4f\nSold: %.6f %s\nReceived: %.2f USDT\nRemaining Holdings: %.6f %s\nRemaining USDT: %.2f",
+		b.Symbol,
+		price,
+		sellQty, b.Symbol,
+		sellUSDT,
+		b.totalHoldings(), b.Symbol,
+		b.TotalUSDT,
+	)
+
+	sendTelegramMessage(token, message)
+
+	fmt.Printf(`
+===== MOCK SELL =====
+Price: %.4f
+Sold: %.6f %s
+USDT Received: %.2f
+Remaining Holdings: %.6f %s
+Total USDT: %.2f
+=====================
+`,
+		price,
+		sellQty, b.Symbol,
+		sellUSDT,
+		b.totalHoldings(), b.Symbol,
+		b.TotalUSDT,
+	)
 }
 
 func StartDCAWebSocket(bot *DCABot, fallbackBuyHours int) {
@@ -226,8 +307,8 @@ func StartDCAWebSocket(bot *DCABot, fallbackBuyHours int) {
 	}
 }
 
-func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent float64, fallbackBuyHours int) {
-	bot := NewDCABot(symbol, totalUSDT, dropPercent, fallbackBuyHours)
+func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent, sellpercent float64, fallbackBuyHours int) {
+	bot := NewDCABot(symbol, totalUSDT, dropPercent, sellpercent, fallbackBuyHours)
 	bot.OneBuyUSDT = oneBuyUSDT // ensure 1% of total
 
 	StartDCAWebSocket(bot, fallbackBuyHours)
