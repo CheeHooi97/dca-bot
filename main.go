@@ -49,11 +49,21 @@ func main() {
 
 	fallbackBuyHours, _ := strconv.ParseInt(fallbackBuyHoursStr, 10, 64)
 
+	fmt.Print("Enter sell percentage(e.g. 1.5): ")
+	sellInput, _ := reader.ReadString('\n')
+	sellStr := strings.TrimSpace(sellInput)
+
+	sellPercent, err := strconv.ParseFloat(sellStr, 64)
+	if err != nil {
+		fmt.Println("Invalid drop percent")
+		return
+	}
+
 	// Initialize service
 	dcaService := service.NewDCAService()
 
 	// Start DCA bot
-	err = dcaService.Start(symbol, totalUSDT, dropPercent, int(fallbackBuyHours))
+	err = dcaService.Start(symbol, totalUSDT, dropPercent, sellPercent, int(fallbackBuyHours))
 	if err != nil {
 		fmt.Println("Error starting DCA:", err)
 		return
