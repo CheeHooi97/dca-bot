@@ -5,7 +5,6 @@ import (
 	"dca-bot/constant"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -218,33 +217,27 @@ Total USDT: %.2f
 }
 
 func StartDCAWebSocket(bot *DCABot, fallbackBuyHours int) {
+	for {
+		err := startWS(bot, fallbackBuyHours)
+		fmt.Println("WebSocket disconnected:", err)
 
-	// Malaysia-safe endpoint (AWS mirror)
+		// Backoff before reconnect
+		time.Sleep(5 * time.Second)
+		fmt.Println("Reconnecting WebSocket...")
+	}
+}
+
+func startWS(bot *DCABot, fallbackBuyHours int) error {
 	wsURL := "wss://data-stream.binance.com/ws/" +
 		strings.ToLower(bot.Symbol) + "@trade"
 
-	fmt.Println("Connecting to:", wsURL)
-
-	// Add safe headers (some ISPs require Origin / UA)
 	header := http.Header{}
 	header.Add("Origin", "https://binance.com")
 	header.Add("User-Agent", "Mozilla/5.0")
 
-	c, resp, err := websocket.DefaultDialer.Dial(wsURL, header)
+	c, _, err := websocket.DefaultDialer.Dial(wsURL, header)
 	if err != nil {
-		fmt.Println("❌ WebSocket handshake failed")
-
-		if resp != nil {
-			fmt.Println("Status:", resp.Status)
-			body := "<no body>"
-			if resp.Body != nil {
-				b, _ := io.ReadAll(resp.Body)
-				body = string(b)
-			}
-			fmt.Println("Response body:", body)
-		}
-
-		log.Fatal("WebSocket error:", err)
+		return err
 	}
 	defer c.Close()
 
@@ -254,13 +247,11 @@ func StartDCAWebSocket(bot *DCABot, fallbackBuyHours int) {
 	tokenConfig, ok := tokenMap[bot.Symbol].(map[float64]string)
 	if !ok {
 		log.Println("symbol not found")
-		return
 	}
 
 	token, ok := tokenConfig[bot.DropPercent]
 	if !ok {
 		log.Println("drop percent not found")
-		return
 	}
 
 	switch bot.Symbol {
@@ -286,8 +277,7 @@ func StartDCAWebSocket(bot *DCABot, fallbackBuyHours int) {
 	for {
 		_, msg, err := c.ReadMessage()
 		if err != nil {
-			fmt.Println("WS closed:", err)
-			return
+			return err
 		}
 
 		var data struct {
