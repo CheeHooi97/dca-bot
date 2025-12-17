@@ -1,75 +1,117 @@
 package main
 
-import (
-	"bufio"
-	"dca-bot/config"
-	"dca-bot/service"
-	"fmt"
-	"os"
-	"strconv"
-	"strings"
-)
+// import your bot package
 
-func main() {
-	// Load config
-	config.LoadConfig()
+// func main() {
+// 	reader := bufio.NewReader(os.Stdin)
 
-	reader := bufio.NewReader(os.Stdin)
+// 	// --- Prompt Symbol ---
+// 	defaultSymbol := "ethusdt"
+// 	fmt.Printf("Enter trading pair (default %s): ", defaultSymbol)
+// 	symbolInput, _ := reader.ReadString('\n')
+// 	symbol := strings.TrimSpace(symbolInput)
+// 	if symbol == "" {
+// 		symbol = defaultSymbol
+// 	}
 
-	// --- Input: Symbol ---
-	fmt.Print("Enter trading pair (e.g. btcusdt): ")
-	symbolInput, _ := reader.ReadString('\n')
-	symbol := strings.TrimSpace(symbolInput)
+// 	// --- Prompt Total USDT ---
+// 	defaultUSDT := 500.0
+// 	fmt.Printf("Enter total USDT budget (default %.2f): ", defaultUSDT)
+// 	usdtInput, _ := reader.ReadString('\n')
+// 	usdtStr := strings.TrimSpace(usdtInput)
+// 	totalUSDT := defaultUSDT
+// 	if usdtStr != "" {
+// 		if val, err := strconv.ParseFloat(usdtStr, 64); err == nil {
+// 			totalUSDT = val
+// 		} else {
+// 			fmt.Println("Invalid input, using default.")
+// 		}
+// 	}
 
-	// --- Input: Total USDT for DCA ---
-	fmt.Print("Enter total USDT budget for DCA: ")
-	usdtInput, _ := reader.ReadString('\n')
-	usdtStr := strings.TrimSpace(usdtInput)
+// 	// --- Prompt Stop Loss Percent ---
+// 	defaultStopLoss := 1.5
+// 	fmt.Printf("Enter Stop Loss percentage (default %.2f%%): ", defaultStopLoss)
+// 	slInput, _ := reader.ReadString('\n')
+// 	slStr := strings.TrimSpace(slInput)
+// 	stopLossPercent := defaultStopLoss
+// 	if slStr != "" {
+// 		if val, err := strconv.ParseFloat(slStr, 64); err == nil {
+// 			stopLossPercent = val
+// 		} else {
+// 			fmt.Println("Invalid input, using default.")
+// 		}
+// 	}
 
-	totalUSDT, err := strconv.ParseFloat(usdtStr, 64)
-	if err != nil {
-		fmt.Println("Invalid USDT amount")
-		return
-	}
+// 	// --- Prompt Low Boundary ---
+// 	fmt.Printf("Enter Low Price boundary: ")
+// 	lowInput, _ := reader.ReadString('\n')
+// 	lowStr := strings.TrimSpace(lowInput)
+// 	var lowPrice float64
+// 	if lowStr != "" {
+// 		if val, err := strconv.ParseFloat(lowStr, 64); err == nil {
+// 			lowPrice = val
+// 		} else {
+// 			fmt.Println("Invalid input, exiting.")
+// 			return
+// 		}
+// 	} else {
+// 		fmt.Println("Low boundary required, exiting.")
+// 		return
+// 	}
 
-	// --- Input: Drop percent trigger ---
-	fmt.Print("Enter drop percentage trigger (e.g. 1.5): ")
-	dropInput, _ := reader.ReadString('\n')
-	dropStr := strings.TrimSpace(dropInput)
+// 	// --- Prompt High Boundary ---
+// 	fmt.Printf("Enter High Price boundary: ")
+// 	highInput, _ := reader.ReadString('\n')
+// 	highStr := strings.TrimSpace(highInput)
+// 	var highPrice float64
+// 	if highStr != "" {
+// 		if val, err := strconv.ParseFloat(highStr, 64); err == nil {
+// 			highPrice = val
+// 		} else {
+// 			fmt.Println("Invalid input, exiting.")
+// 			return
+// 		}
+// 	} else {
+// 		fmt.Println("High boundary required, exiting.")
+// 		return
+// 	}
 
-	dropPercent, err := strconv.ParseFloat(dropStr, 64)
-	if err != nil {
-		fmt.Println("Invalid drop percent")
-		return
-	}
+// 	// --- Initialize FixRangeBot ---
+// 	botInstance := bot.NewFixRangeBot(symbol, totalUSDT)
+// 	botInstance.StopLossPct = stopLossPercent / 100.0
+// 	botInstance.LowPrice = lowPrice
+// 	botInstance.HighPrice = highPrice
+// 	botInstance.GridStep = (highPrice - lowPrice) / float64(botInstance.GridCount)
 
-	fmt.Print("Fallback Buy Again: ")
-	fallbackBuyHoursInput, _ := reader.ReadString('\n')
-	fallbackBuyHoursStr := strings.TrimSpace(fallbackBuyHoursInput)
+// 	// --- Start Bot with simulated price feed ---
+// 	go func() {
+// 		price := lowPrice
+// 		increasing := true
+// 		for {
+// 			candle := bot.FixRangeCandle{
+// 				High:  price + 1,
+// 				Low:   price - 1,
+// 				Close: price,
+// 			}
+// 			botInstance.OnPrice(symbol, price, candle)
 
-	fallbackBuyHours, _ := strconv.ParseInt(fallbackBuyHoursStr, 10, 64)
+// 			// Simulate price movement
+// 			if increasing {
+// 				price += botInstance.GridStep / 2
+// 				if price >= highPrice {
+// 					increasing = false
+// 				}
+// 			} else {
+// 				price -= botInstance.GridStep / 2
+// 				if price <= lowPrice {
+// 					increasing = true
+// 				}
+// 			}
 
-	fmt.Print("Enter sell percentage(e.g. 1.5): ")
-	sellInput, _ := reader.ReadString('\n')
-	sellStr := strings.TrimSpace(sellInput)
+// 			time.Sleep(500 * time.Millisecond)
+// 		}
+// 	}()
 
-	sellPercent, err := strconv.ParseFloat(sellStr, 64)
-	if err != nil {
-		fmt.Println("Invalid drop percent")
-		return
-	}
-
-	// Initialize service
-	dcaService := service.NewDCAService()
-
-	// Start DCA bot
-	err = dcaService.Start(symbol, totalUSDT, dropPercent, sellPercent, int(fallbackBuyHours))
-	if err != nil {
-		fmt.Println("Error starting DCA:", err)
-		return
-	}
-
-	// Keep the program alive so goroutine runs
-	fmt.Println("DCA bot started... (CTRL+C to exit)")
-	select {}
-}
+// 	fmt.Println("FixRange bot started... (CTRL+C to exit)")
+// 	select {} // keep the program alive
+// }
