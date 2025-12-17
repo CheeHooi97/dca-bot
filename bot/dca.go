@@ -26,6 +26,7 @@ type DCABot struct {
 	LastBuyTime    time.Time
 	FallbackHours  time.Duration
 	LatestDayPrice float64
+	RealizedPNL    float64
 }
 
 type DCARecord struct {
@@ -160,17 +161,19 @@ func (b *DCABot) executeSell(price float64, token string) {
 	oneChunk := totalHoldings / recordCount
 	sellQty := oneChunk * 0.5
 	sellUSDT := sellQty * price
-
 	remainingToSell := sellQty
+	realizedPNL := 0.0
 
 	// FIFO reduce from records
 	for i := 0; i < len(b.Records) && remainingToSell > 0; i++ {
 		r := &b.Records[i]
 
 		if r.AmountBought <= remainingToSell {
+			realizedPNL += (price - r.Price) * r.AmountBought
 			remainingToSell -= r.AmountBought
 			r.AmountBought = 0
 		} else {
+			realizedPNL += (price - r.Price) * remainingToSell
 			r.AmountBought -= remainingToSell
 			remainingToSell = 0
 		}
@@ -186,13 +189,15 @@ func (b *DCABot) executeSell(price float64, token string) {
 	b.Records = newRecords
 
 	b.TotalUSDT += sellUSDT
+	b.RealizedPNL += realizedPNL // <--- accumulate realized PNL
 
 	message := fmt.Sprintf(
-		"🔴 MOCK SELL (½ of 1 record)\nSymbol: %s\nPrice: %.4f\nSold: %.6f %s\nReceived: %.2f USDT\nRemaining Holdings: %.6f %s\nRemaining USDT: %.2f",
+		"🔴 MOCK SELL (½ of 1 record)\nSymbol: %s\nPrice: %.4f\nSold: %.6f %s\nReceived: %.2f USDT\nRealized PNL: %.2f USDT\nRemaining Holdings: %.6f %s\nRemaining USDT: %.2f",
 		b.Symbol,
 		price,
 		sellQty, b.Symbol,
 		sellUSDT,
+		realizedPNL,
 		b.totalHoldings(), b.Symbol,
 		b.TotalUSDT,
 	)
@@ -204,6 +209,7 @@ func (b *DCABot) executeSell(price float64, token string) {
 Price: %.4f
 Sold: %.6f %s
 USDT Received: %.2f
+Realized PNL: %.2f
 Remaining Holdings: %.6f %s
 Total USDT: %.2f
 =====================
@@ -211,14 +217,17 @@ Total USDT: %.2f
 		price,
 		sellQty, b.Symbol,
 		sellUSDT,
+		realizedPNL,
 		b.totalHoldings(), b.Symbol,
 		b.TotalUSDT,
 	)
 }
 
-func StartDCAWebSocket(bot *DCABot, fallbackBuyHours int) {
+func StartDCAWebSocket(bot *DCABot, token string) {
+	go bot.StartDailyPNLTracker(token)
+
 	for {
-		err := startWS(bot, fallbackBuyHours)
+		err := startWS(bot, token)
 		fmt.Println("WebSocket disconnected:", err)
 
 		// Backoff before reconnect
@@ -227,7 +236,7 @@ func StartDCAWebSocket(bot *DCABot, fallbackBuyHours int) {
 	}
 }
 
-func startWS(bot *DCABot, fallbackBuyHours int) error {
+func startWS(bot *DCABot, token string) error {
 	wsURL := "wss://data-stream.binance.com/ws/" +
 		strings.ToLower(bot.Symbol) + "@trade"
 
@@ -242,6 +251,33 @@ func startWS(bot *DCABot, fallbackBuyHours int) error {
 	defer c.Close()
 
 	fmt.Println("✅ WebSocket connected successfully!")
+
+	for {
+		_, msg, err := c.ReadMessage()
+		if err != nil {
+			return err
+		}
+
+		var data struct {
+			Price string `json:"p"`
+		}
+
+		if jsonErr := json.Unmarshal(msg, &data); jsonErr != nil {
+			continue
+		}
+
+		price, err := strconv.ParseFloat(data.Price, 64)
+		if err != nil {
+			continue
+		}
+
+		bot.OnPrice(price, token)
+	}
+}
+
+func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent, sellpercent float64, fallbackBuyHours int) {
+	bot := NewDCABot(symbol, totalUSDT, dropPercent, sellpercent, fallbackBuyHours)
+	bot.OneBuyUSDT = oneBuyUSDT // ensure 1% of total
 
 	tokenMap := constant.GetTokenMap()
 	tokenConfig, ok := tokenMap[bot.Symbol].(map[float64]string)
@@ -272,36 +308,7 @@ func startWS(bot *DCABot, fallbackBuyHours int) error {
 	default:
 	}
 
-	go bot.StartDailyPNLTracker(token)
-
-	for {
-		_, msg, err := c.ReadMessage()
-		if err != nil {
-			return err
-		}
-
-		var data struct {
-			Price string `json:"p"`
-		}
-
-		if jsonErr := json.Unmarshal(msg, &data); jsonErr != nil {
-			continue
-		}
-
-		price, err := strconv.ParseFloat(data.Price, 64)
-		if err != nil {
-			continue
-		}
-
-		bot.OnPrice(price, token)
-	}
-}
-
-func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent, sellpercent float64, fallbackBuyHours int) {
-	bot := NewDCABot(symbol, totalUSDT, dropPercent, sellpercent, fallbackBuyHours)
-	bot.OneBuyUSDT = oneBuyUSDT // ensure 1% of total
-
-	StartDCAWebSocket(bot, fallbackBuyHours)
+	StartDCAWebSocket(bot, token)
 
 }
 
@@ -368,12 +375,13 @@ func (b *DCABot) StartDailyPNLTracker(token string) {
 		pnlUSDT, pnlPercent := b.UnrealizedPNL(currentPrice)
 
 		message := fmt.Sprintf(
-			"📊 Daily PNL Report (%s)\nTime: %s\nCurrent Price: %.4f\nAvg Entry: %.4f\nTotal Holdings: %.6f\nUnrealized PNL: %.2f USDT (%.2f%%)",
+			"📊 Daily PNL Report (%s)\nTime: %s\nCurrent Price: %.4f\nAvg Entry: %.4f\nTotal Holdings: %.6f\nRealized PNL: %.2f USDT\nUnrealized PNL: %.2f USDT (%.2f%%)",
 			b.Symbol,
 			time.Now().Format("2006-01-02 15:04:05"),
 			currentPrice,
 			b.avgBuyPrice(),
 			b.totalHoldings(),
+			b.RealizedPNL,
 			pnlUSDT,
 			pnlPercent,
 		)
