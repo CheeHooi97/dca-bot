@@ -16,3 +16,9 @@ func GetTokenMap() map[string]any {
 		},
 	}
 }
+
+func GetFixedRangeTokenMap() map[string]any {
+	return map[string]any{
+		"btcusdt": config.BTC_FIX,
+	}
+}
