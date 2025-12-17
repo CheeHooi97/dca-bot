@@ -14,11 +14,14 @@ func GetTokenMap() map[string]any {
 			1.5: config.ETH1x5,
 			1:   config.ETH1,
 		},
+		"adausdt": map[float64]string{
+			1: config.ADA1_1h,
+		},
 	}
 }
 
 func GetFixedRangeTokenMap() map[string]any {
 	return map[string]any{
-		"btcusdt": config.BTC_FIX,
+		"btcusdt": config.ADA1_1h,
 	}
 }
