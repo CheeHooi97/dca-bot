@@ -21,7 +21,6 @@ var (
 	BTC1_4h          string
 	ETH1_1h          string
 	ETH1_4h          string
-	BTC_FIX          string
 )
 
 // LoadConfig
@@ -41,7 +40,6 @@ func LoadConfig() {
 	BTC1_4h = GetEnv("BTC1_4h")
 	ETH1_1h = GetEnv("ETH1_1h")
 	ETH1_4h = GetEnv("ETH1_4h")
-	BTC_FIX = GetEnv("BTC_FIX")
 }
 
 func GetEnv(key string) string {
@@ -51,3 +49,4 @@ func GetEnv(key string) string {
 	}
 	return value
 }
+
