@@ -17,6 +17,12 @@ func GetTokenMap() map[string]any {
 		"adausdt": map[float64]string{
 			1: config.ADA1_1h,
 		},
+		"bnbusdt": map[float64]string{
+			1: config.BNB1_1h,
+		},
+		"solusdt": map[float64]string{
+			1: config.SOL1_1h,
+		},
 	}
 }
 
