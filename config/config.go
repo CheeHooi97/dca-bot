@@ -22,6 +22,8 @@ var (
 	ETH1_1h          string
 	ETH1_4h          string
 	ADA1_1h          string
+	BNB1_1h          string
+	SOL1_1h          string
 )
 
 // LoadConfig
@@ -42,6 +44,8 @@ func LoadConfig() {
 	ETH1_1h = GetEnv("ETH1_1h")
 	ETH1_4h = GetEnv("ETH1_4h")
 	ADA1_1h = GetEnv("ADA1_1h")
+	BNB1_1h = GetEnv("BNB1_1h")
+	SOL1_1h = GetEnv("SOL1_1h")
 }
 
 func GetEnv(key string) string {
