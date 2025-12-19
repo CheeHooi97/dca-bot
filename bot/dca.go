@@ -132,21 +132,6 @@ func (b *DCABot) executeBuy(price float64, token string) {
 
 	// Send Telegram message
 	sendTelegramMessage(token, message)
-
-	fmt.Printf(`
-===== DCA BUY #%d =====
-Price: %.4f
-Bought: %.6f %s
-USDT Spent: %.2f
-Remaining USDT: %.2f
-Total Holdings: %.6f %s
-Avg Buy Price: %.4f
-========================
-`,
-		record.BuyNumber, record.Price, record.AmountBought, b.Symbol,
-		record.USDTSpent, record.RemainingUSDT, record.TotalHoldings, b.Symbol,
-		avgPrice)
-
 }
 
 func (b *DCABot) executeSell(price float64, token string) {
@@ -156,26 +141,30 @@ func (b *DCABot) executeSell(price float64, token string) {
 
 	totalHoldings := b.totalHoldings()
 	recordCount := float64(len(b.Records))
-
-	// Sell half of ONE record-sized chunk
 	oneChunk := totalHoldings / recordCount
 	sellQty := oneChunk * 0.5
 	sellUSDT := sellQty * price
-	remainingToSell := sellQty
+
+	remaining := sellQty
 	realizedPNL := 0.0
 
 	// FIFO reduce from records
-	for i := 0; i < len(b.Records) && remainingToSell > 0; i++ {
+	for i := 0; i < len(b.Records) && remaining > 0; i++ {
 		r := &b.Records[i]
 
-		if r.AmountBought <= remainingToSell {
+		if r.AmountBought <= remaining {
 			realizedPNL += (price - r.Price) * r.AmountBought
-			remainingToSell -= r.AmountBought
+			remaining -= r.AmountBought
 			r.AmountBought = 0
+			r.USDTSpent = 0
 		} else {
-			realizedPNL += (price - r.Price) * remainingToSell
-			r.AmountBought -= remainingToSell
-			remainingToSell = 0
+			sold := remaining
+			costPortion := (sold / r.AmountBought) * r.USDTSpent
+
+			realizedPNL += (price - r.Price) * sold
+			r.AmountBought -= sold
+			r.USDTSpent -= costPortion
+			remaining = 0
 		}
 	}
 
@@ -189,38 +178,17 @@ func (b *DCABot) executeSell(price float64, token string) {
 	b.Records = newRecords
 
 	b.TotalUSDT += sellUSDT
-	b.RealizedPNL += realizedPNL // <--- accumulate realized PNL
+	b.RealizedPNL += realizedPNL
 
 	message := fmt.Sprintf(
-		"🔴 MOCK SELL (½ of 1 record)\nSymbol: %s\nPrice: %.4f\nSold: %.6f %s\nReceived: %.2f USDT\nRealized PNL: %.2f USDT\nRemaining Holdings: %.6f %s\nRemaining USDT: %.2f",
-		b.Symbol,
+		"🔴 SELL\nPrice: %.4f\nQty: %.6f\nRealized: %.2f\nTotal Realized: %.2f",
 		price,
-		sellQty, b.Symbol,
-		sellUSDT,
+		sellQty,
 		realizedPNL,
-		b.totalHoldings(), b.Symbol,
-		b.TotalUSDT,
+		b.RealizedPNL,
 	)
 
 	sendTelegramMessage(token, message)
-
-	fmt.Printf(`
-===== MOCK SELL =====
-Price: %.4f
-Sold: %.6f %s
-USDT Received: %.2f
-Realized PNL: %.2f
-Remaining Holdings: %.6f %s
-Total USDT: %.2f
-=====================
-`,
-		price,
-		sellQty, b.Symbol,
-		sellUSDT,
-		realizedPNL,
-		b.totalHoldings(), b.Symbol,
-		b.TotalUSDT,
-	)
 }
 
 func StartDCAWebSocket(bot *DCABot, token string) {
