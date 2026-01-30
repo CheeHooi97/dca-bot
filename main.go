@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -37,10 +38,13 @@ func main() {
 
 	// Use GetAccountWallet instead of GetWalletBalance
 	res, err := client.NewUtaBybitServiceWithParams(params).GetAccountWallet(context.Background())
-	fmt.Printf("Raw Response: %+v\n", res)
 	if err != nil {
-		fmt.Printf("API Error: %v\n", err)
-		return
+		// This will print the actual network or validation error
+		log.Fatalf("Critical Connection Error: %v", err)
+	}
+
+	if res == nil {
+		log.Fatal("Bybit returned a nil response without an error. Check your internet or API URL.")
 	}
 
 	var balance float64
