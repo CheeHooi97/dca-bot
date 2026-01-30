@@ -33,7 +33,7 @@ func main() {
 	}
 
 	// 3. Initialize Bybit Client
-	client := bybit.NewBybitHttpClient(config.BybitApiKey, config.BybitApiSecret, bybit.WithBaseURL("https://api-gta.bybit.com"))
+	client := bybit.NewBybitHttpClient(config.BybitApiKey, config.BybitApiSecret, bybit.WithBaseURL(bybit.MAINNET))
 
 	serverTime, err := client.NewUtaBybitServiceNoParams().GetServerTime(context.Background())
 	if err != nil {
