@@ -27,6 +27,11 @@ func main() {
 	symbolInput, _ := reader.ReadString('\n')
 	symbol := strings.TrimSpace(strings.ToUpper(symbolInput))
 
+	fmt.Printf("DEBUG: Key Length: %d, Secret Length: %d\n", len(config.BybitApiKey), len(config.BybitApiSecret))
+	if config.BybitApiKey == "" || config.BybitApiSecret == "" {
+		log.Fatal("API Key or Secret is empty! Check your config loading.")
+	}
+
 	// 3. Initialize Bybit Client
 	client := bybit.NewBybitHttpClient(config.BybitApiKey, config.BybitApiSecret, bybit.WithBaseURL(bybit.MAINNET))
 
