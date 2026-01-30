@@ -4,6 +4,8 @@ import (
 	"dca-bot/bot"
 	"dca-bot/repository"
 	"fmt"
+
+	bybit "github.com/bybit-exchange/bybit.go.api"
 )
 
 type DCAService struct {
@@ -16,7 +18,7 @@ func NewDCAService() *DCAService {
 	}
 }
 
-func (s *DCAService) Start(symbol string, totalUSDT, dropPercent, sellPercent float64, fallbackBuyHours int) error {
+func (s *DCAService) Start(client *bybit.Client, symbol string, totalUSDT, dropPercent, sellPercent float64, fallbackBuyHours int) error {
 	// dcaAmount := totalUSDT * 0.01 // buy 1% per entry
 
 	fmt.Println("===== DCA MODE =====")
@@ -29,8 +31,7 @@ func (s *DCAService) Start(symbol string, totalUSDT, dropPercent, sellPercent fl
 	s.repo.Save(symbol, totalUSDT, dropPercent) // optional persistence
 
 	// run DCA bot (websocket)
-	go bot.RunDCABot(symbol, totalUSDT, dcaAmount, dropPercent, sellPercent, fallbackBuyHours)
+	go bot.RunDCABot(client, symbol, totalUSDT, 1, dropPercent, sellPercent, fallbackBuyHours)
 
 	return nil
 }
-
