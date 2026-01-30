@@ -40,15 +40,13 @@ type DCARecord struct {
 	TotalHoldings float64
 }
 
-func NewDCABot(symbol string, totalUSDT, dropPercent, sellPercent float64, fallbackBuyHours int) *DCABot {
-	client := bybit.NewBybitHttpClient(config.BybitApiKey, config.BybitApiSecret, bybit.WithBaseURL(bybit.MAINNET))
-
+func NewDCABot(client *bybit.Client, symbol string, totalUSDT, dropPercent, sellPercent float64, fallbackBuyHours int) *DCABot {
 	return &DCABot{
 		Symbol:        strings.ToUpper(symbol),
 		DropPercent:   dropPercent,
 		SellPercent:   sellPercent,
 		TotalUSDT:     totalUSDT,
-		OneBuyUSDT:    totalUSDT * 0.01,
+		OneBuyUSDT:    1,
 		Records:       []DCARecord{},
 		FallbackHours: time.Duration(fallbackBuyHours) * time.Hour,
 		BybitClient:   client,
@@ -246,8 +244,8 @@ func startBybitWS(bot *DCABot, token string) error {
 	}
 }
 
-func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent, sellPercent float64, fallbackBuyHours int) {
-	bot := NewDCABot(symbol, totalUSDT, dropPercent, sellPercent, fallbackBuyHours)
+func RunDCABot(client *bybit.Client, symbol string, totalUSDT, oneBuyUSDT, dropPercent, sellPercent float64, fallbackBuyHours int) {
+	bot := NewDCABot(client, symbol, totalUSDT, dropPercent, sellPercent, fallbackBuyHours)
 	bot.OneBuyUSDT = oneBuyUSDT
 
 	tokenMap := constant.GetTokenMap()
