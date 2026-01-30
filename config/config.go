@@ -24,6 +24,8 @@ var (
 	ADA1_1h          string
 	BNB1_1h          string
 	SOL1_1h          string
+	BybitApiKey      string
+	BybitApiSecret   string
 )
 
 // LoadConfig
@@ -46,6 +48,8 @@ func LoadConfig() {
 	ADA1_1h = GetEnv("ADA1_1h")
 	BNB1_1h = GetEnv("BNB1_1h")
 	SOL1_1h = GetEnv("SOL1_1h")
+	BybitApiKey = GetEnv("BYBIT_API_KEY")
+	BybitApiSecret = GetEnv("BYBIT_API_SECRET")
 }
 
 func GetEnv(key string) string {
