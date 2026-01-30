@@ -1,16 +1,16 @@
 package bot
 
 import (
+	"context"
 	"dca-bot/config"
 	"dca-bot/constant"
-	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	bybit "github.com/bybit-exchange/bybit.go.api"
 	"github.com/gorilla/websocket"
 )
 
@@ -27,6 +27,8 @@ type DCABot struct {
 	FallbackHours  time.Duration
 	LatestDayPrice float64
 	RealizedPNL    float64
+	BybitClient    *bybit.Client
+	Category       string
 }
 
 type DCARecord struct {
@@ -39,21 +41,24 @@ type DCARecord struct {
 }
 
 func NewDCABot(symbol string, totalUSDT, dropPercent, sellPercent float64, fallbackBuyHours int) *DCABot {
+	client := bybit.NewBybitHttpClient(config.BybitApiKey, config.BybitApiSecret, bybit.WithBaseURL(bybit.MAINNET))
+
 	return &DCABot{
-		Symbol:        symbol,
+		Symbol:        strings.ToUpper(symbol),
 		DropPercent:   dropPercent,
 		SellPercent:   sellPercent,
 		TotalUSDT:     totalUSDT,
 		OneBuyUSDT:    totalUSDT * 0.01,
 		Records:       []DCARecord{},
 		FallbackHours: time.Duration(fallbackBuyHours) * time.Hour,
+		BybitClient:   client,
+		Category:      "spot",
 	}
 }
 
 func (b *DCABot) OnPrice(price float64, token string) {
 	b.LatestDayPrice = price
 
-	// FIRST BUY
 	if !b.Started {
 		fmt.Printf("\nDCA START — FIRST BUY at %.4f\n", price)
 		b.executeBuy(price, token)
@@ -63,7 +68,6 @@ func (b *DCABot) OnPrice(price float64, token string) {
 		return
 	}
 
-	// PRICE DROP BUY
 	drop := ((b.LastBuyPrice - price) / b.LastBuyPrice) * 100
 	if drop >= b.DropPercent {
 		fmt.Printf("PRICE DROP %.2f%% → BUY triggered\n", drop)
@@ -73,25 +77,18 @@ func (b *DCABot) OnPrice(price float64, token string) {
 		return
 	}
 
-	// PRICE RISE %
 	rise := ((price - b.LastBuyPrice) / b.LastBuyPrice) * 100
-
-	// FALLBACK BUY (after X hours + rise >= DropPercent)
 	if time.Since(b.LastBuyTime) >= b.FallbackHours && rise >= b.DropPercent {
-		fmt.Printf("NO DROP for %v → Rise %.2f%% ≥ %.2f%% → FALLBACK BUY at %.4f\n",
-			b.FallbackHours, rise, b.DropPercent, price)
-
+		fmt.Printf("FALLBACK BUY → Rise %.2f%% after %v\n", rise, b.FallbackHours)
 		b.executeBuy(price, token)
 		b.LastBuyPrice = price
 		b.LastBuyTime = time.Now()
 		return
 	}
 
-	// SELL CONDITION
 	avgPrice := b.avgBuyPrice()
 	if avgPrice > 0 {
 		targetPrice := avgPrice * (1 + b.SellPercent/100)
-
 		if price >= targetPrice {
 			fmt.Printf("SELL triggered → Price %.4f ≥ Target %.4f\n", price, targetPrice)
 			b.executeSell(price, token)
@@ -101,8 +98,21 @@ func (b *DCABot) OnPrice(price float64, token string) {
 
 func (b *DCABot) executeBuy(price float64, token string) {
 	if b.TotalUSDT < b.OneBuyUSDT {
-		fmt.Println("No more USDT left.")
 		sendTelegramMessage(token, "❗ No more USDT left for DCA.")
+		return
+	}
+
+	params := map[string]interface{}{
+		"category":  b.Category,
+		"symbol":    b.Symbol,
+		"side":      "Buy",
+		"orderType": "Market",
+		"qty":       fmt.Sprintf("%.2f", b.OneBuyUSDT), // For Spot Market Buy, qty is USDT
+	}
+
+	_, err := b.BybitClient.NewUtaBybitServiceWithParams(params).PlaceOrder(context.Background())
+	if err != nil {
+		log.Printf("Bybit Buy API Error: %v", err)
 		return
 	}
 
@@ -117,20 +127,10 @@ func (b *DCABot) executeBuy(price float64, token string) {
 		RemainingUSDT: b.TotalUSDT,
 		TotalHoldings: b.totalHoldings() + qty,
 	}
-
 	b.Records = append(b.Records, record)
-	avgPrice := b.avgBuyPrice()
 
-	message := fmt.Sprintf(
-		"📉 DCA BUY #%d\nSymbol: %s\nPrice: %.4f\nBought: %.6f %s\nUSDT Spent: %.2f\nRemaining: %.2f\nTotal Holdings: %.6f %s\n📊 Avg Buy Price: %.4f",
-		record.BuyNumber, b.Symbol,
-		record.Price, record.AmountBought, b.Symbol,
-		record.USDTSpent, record.RemainingUSDT,
-		record.TotalHoldings, b.Symbol,
-		avgPrice,
-	)
-
-	// Send Telegram message
+	message := fmt.Sprintf("📉 BYBIT BUY #%d\nSymbol: %s\nPrice: %.4f\nSpent: %.2f USDT\nAvg: %.4f",
+		record.BuyNumber, b.Symbol, price, b.OneBuyUSDT, b.avgBuyPrice())
 	sendTelegramMessage(token, message)
 }
 
@@ -140,54 +140,52 @@ func (b *DCABot) executeSell(price float64, token string) {
 	}
 
 	totalHoldings := b.totalHoldings()
-	recordCount := float64(len(b.Records))
-	oneChunk := totalHoldings / recordCount
-	sellQty := oneChunk * 0.5
+	sellQty := totalHoldings * 0.5 // Example: Sell 50%
 	sellUSDT := sellQty * price
 
+	params := map[string]interface{}{
+		"category":  b.Category,
+		"symbol":    b.Symbol,
+		"side":      "Sell",
+		"orderType": "Market",
+		"qty":       fmt.Sprintf("%.6f", sellQty),
+	}
+
+	_, err := b.BybitClient.NewUtaBybitServiceWithParams(params).PlaceOrder(context.Background())
+	if err != nil {
+		log.Printf("Bybit Sell API Error: %v", err)
+		return
+	}
+
+	// FIFO Logic
 	remaining := sellQty
 	realizedPNL := 0.0
-
-	// FIFO reduce from records
 	for i := 0; i < len(b.Records) && remaining > 0; i++ {
 		r := &b.Records[i]
-
 		if r.AmountBought <= remaining {
 			realizedPNL += (price - r.Price) * r.AmountBought
 			remaining -= r.AmountBought
 			r.AmountBought = 0
-			r.USDTSpent = 0
 		} else {
-			sold := remaining
-			costPortion := (sold / r.AmountBought) * r.USDTSpent
-
-			realizedPNL += (price - r.Price) * sold
-			r.AmountBought -= sold
-			r.USDTSpent -= costPortion
+			realizedPNL += (price - r.Price) * remaining
+			r.AmountBought -= remaining
 			remaining = 0
 		}
 	}
 
-	// Clean up empty records
-	newRecords := []DCARecord{}
-	for _, r := range b.Records {
-		if r.AmountBought > 0 {
-			newRecords = append(newRecords, r)
-		}
-	}
-	b.Records = newRecords
-
 	b.TotalUSDT += sellUSDT
 	b.RealizedPNL += realizedPNL
 
-	message := fmt.Sprintf(
-		"🔴 SELL\nPrice: %.4f\nQty: %.6f\nRealized: %.2f\nTotal Realized: %.2f",
-		price,
-		sellQty,
-		realizedPNL,
-		b.RealizedPNL,
-	)
+	// Filter out empty records
+	var updated []DCARecord
+	for _, r := range b.Records {
+		if r.AmountBought > 0 {
+			updated = append(updated, r)
+		}
+	}
+	b.Records = updated
 
+	message := fmt.Sprintf("🔴 BYBIT SELL\nPrice: %.4f\nQty: %.6f\nRealized: %.2f", price, sellQty, realizedPNL)
 	sendTelegramMessage(token, message)
 }
 
@@ -195,57 +193,62 @@ func StartDCAWebSocket(bot *DCABot, token string) {
 	go bot.StartDailyPNLTracker(token)
 
 	for {
-		err := startWS(bot, token)
-		fmt.Println("WebSocket disconnected:", err)
-
-		// Backoff before reconnect
+		err := startBybitWS(bot, token)
+		log.Printf("Bybit WS Disconnected: %v. Reconnecting...", err)
 		time.Sleep(5 * time.Second)
-		fmt.Println("Reconnecting WebSocket...")
 	}
 }
 
-func startWS(bot *DCABot, token string) error {
-	wsURL := "wss://data-stream.binance.com/ws/" +
-		strings.ToLower(bot.Symbol) + "@trade"
-
-	header := http.Header{}
-	header.Add("Origin", "https://binance.com")
-	header.Add("User-Agent", "Mozilla/5.0")
-
-	c, _, err := websocket.DefaultDialer.Dial(wsURL, header)
+func startBybitWS(bot *DCABot, token string) error {
+	wsURL := "wss://stream.bybit.com/v5/public/spot"
+	c, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
 
-	fmt.Println("✅ WebSocket connected successfully!")
+	// 1. Subscribe to Trade Topic
+	sub := map[string]interface{}{
+		"op":   "subscribe",
+		"args": []string{"publicTrade." + bot.Symbol},
+	}
+	if err := c.WriteJSON(sub); err != nil {
+		return err
+	}
+
+	// 2. Start Heartbeat (Ping) every 20s
+	go func() {
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := c.WriteJSON(map[string]string{"op": "ping"}); err != nil {
+				return
+			}
+		}
+	}()
+
+	fmt.Printf("✅ Bybit WS Connected for %s\n", bot.Symbol)
 
 	for {
-		_, msg, err := c.ReadMessage()
-		if err != nil {
+		var msg map[string]interface{}
+		if err := c.ReadJSON(&msg); err != nil {
 			return err
 		}
 
-		var data struct {
-			Price string `json:"p"`
+		// Bybit V5 Public Trade data structure
+		if data, ok := msg["data"].([]interface{}); ok && len(data) > 0 {
+			trade := data[0].(map[string]interface{})
+			if pStr, ok := trade["p"].(string); ok {
+				price, _ := strconv.ParseFloat(pStr, 64)
+				bot.OnPrice(price, token)
+			}
 		}
-
-		if jsonErr := json.Unmarshal(msg, &data); jsonErr != nil {
-			continue
-		}
-
-		price, err := strconv.ParseFloat(data.Price, 64)
-		if err != nil {
-			continue
-		}
-
-		bot.OnPrice(price, token)
 	}
 }
 
-func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent, sellpercent float64, fallbackBuyHours int) {
-	bot := NewDCABot(symbol, totalUSDT, dropPercent, sellpercent, fallbackBuyHours)
-	bot.OneBuyUSDT = oneBuyUSDT // ensure 1% of total
+func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent, sellPercent float64, fallbackBuyHours int) {
+	bot := NewDCABot(symbol, totalUSDT, dropPercent, sellPercent, fallbackBuyHours)
+	bot.OneBuyUSDT = oneBuyUSDT
 
 	tokenMap := constant.GetTokenMap()
 	tokenConfig, ok := tokenMap[bot.Symbol].(map[float64]string)
@@ -277,13 +280,14 @@ func RunDCABot(symbol string, totalUSDT, oneBuyUSDT, dropPercent, sellpercent fl
 	}
 
 	StartDCAWebSocket(bot, token)
-
 }
+
+// --- Helper Functions ---
 
 func (b *DCABot) totalCost() float64 {
 	var total float64
 	for _, r := range b.Records {
-		total += r.USDTSpent
+		total += (r.Price * r.AmountBought)
 	}
 	return total
 }
@@ -297,14 +301,11 @@ func (b *DCABot) totalHoldings() float64 {
 }
 
 func (b *DCABot) avgBuyPrice() float64 {
-	totalCost := b.totalCost()
-	totalHoldings := b.totalHoldings()
-
-	if totalHoldings == 0 {
+	holdings := b.totalHoldings()
+	if holdings == 0 {
 		return 0
 	}
-
-	return totalCost / totalHoldings
+	return b.totalCost() / holdings
 }
 
 func (b *DCABot) UnrealizedPNL(currentPrice float64) (pnlUSDT float64, pnlPercent float64) {
