@@ -2,74 +2,132 @@ package main
 
 import (
 	"bufio"
-	"dca-bot/config"
-	"dca-bot/service"
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+
+	"dca-bot/config"
+	"dca-bot/service" // Update with your actual package path
+
+	bybit "github.com/bybit-exchange/bybit.go.api"
 )
 
 func main() {
-	// Load config
+	// 1. Load config
 	config.LoadConfig()
 
 	reader := bufio.NewReader(os.Stdin)
 
-	// --- Input: Symbol ---
-	fmt.Print("Enter trading pair (e.g. btcusdt): ")
+	// 2. Input: Symbol
+	fmt.Print("Enter trading pair (e.g. BTCUSDT): ")
 	symbolInput, _ := reader.ReadString('\n')
-	symbol := strings.TrimSpace(symbolInput)
+	symbol := strings.TrimSpace(strings.ToUpper(symbolInput))
 
-	// --- Input: Total USDT for DCA ---
-	fmt.Print("Enter total USDT budget for DCA: ")
-	usdtInput, _ := reader.ReadString('\n')
-	usdtStr := strings.TrimSpace(usdtInput)
+	// 3. Initialize Bybit Client
+	client := bybit.NewBybitHttpClient(config.BybitApiKey, config.BybitApiSecret, bybit.WithBaseURL(bybit.MAINNET))
 
-	totalUSDT, err := strconv.ParseFloat(usdtStr, 64)
+	// 4. Fetch Wallet Balance from Bybit
+	params := map[string]interface{}{
+		"accountType": "UNIFIED", // Options: UNIFIED, SPOT, CONTRACT
+		"coin":        "USDT",
+	}
+
+	// Use GetAccountWallet instead of GetWalletBalance
+	res, err := client.NewUtaBybitServiceWithParams(params).GetAccountWallet(context.Background())
 	if err != nil {
-		fmt.Println("Invalid USDT amount")
+		fmt.Printf("API Error: %v\n", err)
 		return
 	}
 
-	// --- Input: Drop percent trigger ---
+	var balance float64
+
+	switch v := res.Result.(type) {
+	case []byte:
+		// Case 1: Result is raw JSON (needs Unmarshal)
+		var data struct {
+			List []struct {
+				Coin []struct {
+					Coin          string `json:"coin"`
+					WalletBalance string `json:"walletBalance"`
+				} `json:"coin"`
+			} `json:"list"`
+		}
+		if err := json.Unmarshal(v, &data); err == nil && len(data.List) > 0 {
+			for _, c := range data.List[0].Coin {
+				if c.Coin == "USDT" {
+					balance, _ = strconv.ParseFloat(c.WalletBalance, 64)
+					break
+				}
+			}
+		}
+
+	case map[string]interface{}:
+		// Case 2: Result is already a map (needs type assertions)
+		if list, ok := v["list"].([]interface{}); ok && len(list) > 0 {
+			if account, ok := list[0].(map[string]interface{}); ok {
+				if coins, ok := account["coin"].([]interface{}); ok {
+					for _, c := range coins {
+						if coinData, ok := c.(map[string]interface{}); ok {
+							if coinData["coin"] == "USDT" {
+								balanceStr, _ := coinData["walletBalance"].(string)
+								balance, _ = strconv.ParseFloat(balanceStr, 64)
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+	default:
+		fmt.Printf("Unknown result type: %T\n", v)
+	}
+
+	if balance <= 0 {
+		fmt.Println("❌ Could not retrieve USDT balance. Please check if funds are in your Unified/Spot account.")
+		return
+	}
+	fmt.Printf("✅ Balance found: %.2f USDT\n", balance)
+
+	// 6. Input: Parameters
 	fmt.Print("Enter drop percentage trigger (e.g. 1.5): ")
 	dropInput, _ := reader.ReadString('\n')
-	dropStr := strings.TrimSpace(dropInput)
+	dropPercent, _ := strconv.ParseFloat(strings.TrimSpace(dropInput), 64)
 
-	dropPercent, err := strconv.ParseFloat(dropStr, 64)
-	if err != nil {
-		fmt.Println("Invalid drop percent")
-		return
-	}
+	fmt.Print("Fallback Buy Hours (e.g. 24): ")
+	fbInput, _ := reader.ReadString('\n')
+	fallbackBuyHours, _ := strconv.ParseInt(strings.TrimSpace(fbInput), 10, 64)
 
-	fmt.Print("Fallback Buy Again: ")
-	fallbackBuyHoursInput, _ := reader.ReadString('\n')
-	fallbackBuyHoursStr := strings.TrimSpace(fallbackBuyHoursInput)
-
-	fallbackBuyHours, _ := strconv.ParseInt(fallbackBuyHoursStr, 10, 64)
-
-	fmt.Print("Enter sell percentage(e.g. 1.5): ")
+	fmt.Print("Enter sell percentage (e.g. 1.5): ")
 	sellInput, _ := reader.ReadString('\n')
-	sellStr := strings.TrimSpace(sellInput)
+	sellPercent, _ := strconv.ParseFloat(strings.TrimSpace(sellInput), 64)
 
-	sellPercent, err := strconv.ParseFloat(sellStr, 64)
-	if err != nil {
-		fmt.Println("Invalid drop percent")
-		return
-	}
-
-	// Initialize service
+	// 7. Initialize and Start Service
 	dcaService := service.NewDCAService()
-
-	// Start DCA bot
-	err = dcaService.Start(symbol, totalUSDT, dropPercent, sellPercent, int(fallbackBuyHours))
+	err = dcaService.Start(client, symbol, balance, dropPercent, sellPercent, int(fallbackBuyHours))
 	if err != nil {
 		fmt.Println("Error starting DCA:", err)
 		return
 	}
 
-	// Keep the program alive so goroutine runs
-	fmt.Println("DCA bot started... (CTRL+C to exit)")
+	fmt.Println("🚀 DCA bot is now running... (CTRL+C to exit)")
 	select {}
+}
+
+func processResultMap(resultMap map[string]interface{}, balance *float64) {
+	if list, ok := resultMap["list"].([]interface{}); ok && len(list) > 0 {
+		account := list[0].(map[string]interface{})
+		if coins, ok := account["coin"].([]interface{}); ok {
+			for _, c := range coins {
+				coinData := c.(map[string]interface{})
+				if coinData["coin"] == "USDT" {
+					val, _ := strconv.ParseFloat(coinData["walletBalance"].(string), 64)
+					*balance = val
+					return
+				}
+			}
+		}
+	}
 }
