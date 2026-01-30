@@ -35,6 +35,13 @@ func main() {
 	// 3. Initialize Bybit Client
 	client := bybit.NewBybitHttpClient(config.BybitApiKey, config.BybitApiSecret, bybit.WithBaseURL(bybit.MAINNET))
 
+	serverTime, err := client.NewUtaBybitServiceNoParams().GetServerTime(context.Background())
+	if err != nil {
+		fmt.Println("Network Error: Cannot even reach Bybit!", err)
+	} else {
+		fmt.Println("Network OK. Server Time:", serverTime.Result)
+	}
+
 	// 4. Fetch Wallet Balance from Bybit
 	params := map[string]interface{}{
 		"accountType": "UNIFIED", // Options: UNIFIED, SPOT, CONTRACT
