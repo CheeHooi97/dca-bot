@@ -37,6 +37,7 @@ func main() {
 
 	// Use GetAccountWallet instead of GetWalletBalance
 	res, err := client.NewUtaBybitServiceWithParams(params).GetAccountWallet(context.Background())
+	fmt.Printf("Raw Response: %+v\n", res)
 	if err != nil {
 		fmt.Printf("API Error: %v\n", err)
 		return
